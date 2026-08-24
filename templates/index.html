@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Port Pilot</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background: #f5f6f8;
+            color: #222;
+        }
+
+        header {
+            background: #20232a;
+            color: white;
+            padding: 20px 30px;
+        }
+
+        header h1 {
+            margin: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        input, button {
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 15px;
+        }
+
+        button {
+            background: #20232a;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            opacity: 0.85;
+        }
+
+        .cards {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            min-width: 180px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.08);
+        }
+
+        .card .number {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,.08);
+        }
+
+        th, td {
+            padding: 13px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+        }
+
+        th {
+            background: #f0f1f3;
+        }
+
+        .docker {
+            color: #1877f2;
+            font-weight: bold;
+        }
+
+        .host {
+            color: #555;
+            font-weight: bold;
+        }
+
+        .status {
+            color: #0a8f3d;
+            font-weight: bold;
+        }
+
+        #message {
+            margin: 15px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>🔌 Port Pilot</h1>
+</header>
+
+<div class="container">
+
+    <div class="cards">
+
+        <div class="card">
+            <div>Ports in use</div>
+            <div class="number" id="usedCount">0</div>
+        </div>
+
+        <div class="card">
+            <div>TCP</div>
+            <div class="number" id="tcpCount">0</div>
+        </div>
+
+        <div class="card">
+            <div>UDP</div>
+            <div class="number" id="udpCount">0</div>
+        </div>
+
+        <div class="card">
+            <div>Docker</div>
+            <div class="number" id="dockerCount">0</div>
+        </div>
+
+    </div>
+
+    <div class="toolbar">
+
+        <input
+            type="text"
+            id="search"
+            placeholder="Search port, service, container..."
+            onkeyup="filterTable()"
+        >
+
+        <button onclick="loadPorts()">
+            🔄 Refresh
+        </button>
+
+        <button onclick="findPorts()">
+            🔎 Find Available Ports
+        </button>
+
+    </div>
+
+    <div id="message"></div>
+
+    <table>
+
+        <thead>
+
+            <tr>
+                <th>Port</th>
+                <th>Protocol</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Process / Container</th>
+                <th>Address</th>
+            </tr>
+
+        </thead>
+
+        <tbody id="portTable"></tbody>
+
+    </table>
+
+</div>
+
+<script>
+
+let allPorts = [];
+
+async function loadPorts() {
+
+    document.getElementById("message").innerText =
+        "Scanning host...";
+
+    const response = await fetch("/api/ports");
+
+    allPorts = await response.json();
+
+    renderTable(allPorts);
+
+    document.getElementById("message").innerText =
+        "Scan completed.";
+
+}
+
+
+function renderTable(ports) {
+
+    const table = document.getElementById("portTable");
+
+    table.innerHTML = "";
+
+    let tcp = 0;
+    let udp = 0;
+    let docker = 0;
+
+    ports.forEach(item => {
+
+        if (item.protocol === "TCP")
+            tcp++;
+
+        if (item.protocol === "UDP")
+            udp++;
+
+        if (item.source === "Docker")
+            docker++;
+
+        let service =
+            item.docker ||
+            item.process ||
+            "-";
+
+        let row = document.createElement("tr");
+
+        row.innerHTML = `
+            <td><strong>${item.port}</strong></td>
+
+            <td>${item.protocol}</td>
+
+            <td class="status">
+                🟢 USED
+            </td>
+
+            <td class="${item.source === "Docker" ? "docker" : "host"}">
+                ${item.source}
+            </td>
+
+            <td>${service}</td>
+
+            <td>${item.address}</td>
+        `;
+
+        table.appendChild(row);
+
+    });
+
+    document.getElementById("usedCount").innerText =
+        ports.length;
+
+    document.getElementById("tcpCount").innerText =
+        tcp;
+
+    document.getElementById("udpCount").innerText =
+        udp;
+
+    document.getElementById("dockerCount").innerText =
+        docker;
+}
+
+
+function filterTable() {
+
+    const search =
+        document.getElementById("search")
+        .value
+        .toLowerCase();
+
+    const filtered = allPorts.filter(item => {
+
+        return JSON.stringify(item)
+            .toLowerCase()
+            .includes(search);
+
+    });
+
+    renderTable(filtered);
+}
+
+
+async function findPorts() {
+
+    const response =
+        await fetch("/api/find-port?start=8000&end=9000");
+
+    const data = await response.json();
+
+    document.getElementById("message").innerText =
+        "Available ports: " +
+        data.available.join(", ");
+
+}
+
+
+loadPorts();
+
+</script>
+
+</body>
+</html>
