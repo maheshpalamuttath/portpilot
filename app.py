@@ -22,6 +22,7 @@ def get_docker_ports():
         )
 
         for line in result.stdout.strip().splitlines():
+
             if not line:
                 continue
 
@@ -40,6 +41,7 @@ def get_docker_ports():
             })
 
     except Exception as e:
+
         print("Docker error:", e)
 
     return containers
@@ -50,6 +52,7 @@ def get_host_ports():
     ports = []
 
     try:
+
         result = subprocess.run(
             ["ss", "-lntupH"],
             capture_output=True,
@@ -58,6 +61,7 @@ def get_host_ports():
         )
 
         for line in result.stdout.strip().splitlines():
+
             parts = line.split()
 
             if len(parts) < 5:
@@ -67,28 +71,38 @@ def get_host_ports():
 
             if protocol.startswith("tcp"):
                 proto = "TCP"
+
             elif protocol.startswith("udp"):
                 proto = "UDP"
+
             else:
                 continue
 
             local_address = parts[4]
 
             try:
+
                 if local_address.startswith("["):
+
                     port = int(
-                        local_address.rsplit(":", 1)[1].rstrip("]")
+                        local_address.rsplit(":", 1)[1]
+                        .rstrip("]")
                     )
+
                 else:
+
                     port = int(
                         local_address.rsplit(":", 1)[1]
                     )
+
             except Exception:
+
                 continue
 
             process = ""
 
             if len(parts) >= 7:
+
                 process = " ".join(parts[6:])
 
             ports.append({
@@ -99,6 +113,7 @@ def get_host_ports():
             })
 
     except Exception as e:
+
         print("ss error:", e)
 
     return ports
@@ -108,19 +123,23 @@ def scan_ports():
     """
     Return one row per actual host port + protocol.
 
-    IPv4 and IPv6 bindings of the same port are merged.
-    Multiple Docker containers using the same host port
-    are also shown in the same row.
+    Docker ports are detected separately and merged with
+    host listening ports.
+
+    Docker takes priority as the source when the same
+    host port is also detected by ss.
     """
 
     host_ports = get_host_ports()
+
     docker_containers = get_docker_ports()
 
     ports = {}
 
-    # ---------------------------------------------------------
+
+    # =========================================================
     # HOST PORTS
-    # ---------------------------------------------------------
+    # =========================================================
 
     for item in host_ports:
 
@@ -130,30 +149,41 @@ def scan_ports():
         )
 
         if key not in ports:
+
             ports[key] = {
+
                 "port": item["port"],
+
                 "protocol": item["protocol"],
+
                 "address": [],
+
                 "process": [],
+
                 "source": "Host"
+
             }
 
         if item["address"] not in ports[key]["address"]:
+
             ports[key]["address"].append(
                 item["address"]
             )
 
         if (
             item["process"]
-            and item["process"] not in ports[key]["process"]
+            and
+            item["process"] not in ports[key]["process"]
         ):
+
             ports[key]["process"].append(
                 item["process"]
             )
 
-    # ---------------------------------------------------------
+
+    # =========================================================
     # DOCKER PORTS
-    # ---------------------------------------------------------
+    # =========================================================
 
     for container in docker_containers:
 
@@ -173,17 +203,22 @@ def scan_ports():
                     1
                 )
 
-                # Examples:
-                #
-                # 0.0.0.0:5000
-                # :::5000
-                # 127.0.0.1:8080
+
+                # -------------------------------------------------
+                # Host port
+                # -------------------------------------------------
 
                 host_port = int(
                     host_part.rsplit(":", 1)[1]
                 )
 
+
+                # -------------------------------------------------
+                # Container port + protocol
+                # -------------------------------------------------
+
                 container_port = container_part
+
                 protocol = "TCP"
 
                 if "/" in container_part:
@@ -194,31 +229,48 @@ def scan_ports():
 
                     protocol = proto.upper()
 
+
                 key = (
                     host_port,
                     protocol
                 )
 
+
+                # -------------------------------------------------
+                # Create port entry
+                # -------------------------------------------------
+
                 if key not in ports:
 
                     ports[key] = {
+
                         "port": host_port,
+
                         "protocol": protocol,
+
                         "address": [],
+
                         "process": [],
+
                         "source": "Docker"
+
                     }
+
 
                 item = ports[key]
 
-                # Docker takes priority as the source
+
+                # Docker takes priority
+
                 item["source"] = "Docker"
 
+
                 # -------------------------------------------------
-                # ADDRESS
+                # Address
                 # -------------------------------------------------
 
                 address = host_part.rsplit(":", 1)[0]
+
 
                 if address == "0.0.0.0":
 
@@ -232,6 +284,7 @@ def scan_ports():
 
                     display_address = address
 
+
                 if (
                     display_address
                     not in item["address"]
@@ -241,14 +294,16 @@ def scan_ports():
                         display_address
                     )
 
+
                 # -------------------------------------------------
-                # CONTAINER
+                # Container
                 # -------------------------------------------------
 
                 container_info = (
                     f'{container["name"]} → '
                     f'{container_port}'
                 )
+
 
                 if (
                     container_info
@@ -258,6 +313,7 @@ def scan_ports():
                     item["process"].append(
                         container_info
                     )
+
 
             except Exception as e:
 
@@ -269,36 +325,56 @@ def scan_ports():
 
                 continue
 
-    # ---------------------------------------------------------
+
+    # =========================================================
     # FORMAT RESULT
-    # ---------------------------------------------------------
+    # =========================================================
 
     result = []
 
     for item in ports.values():
 
         result.append({
+
             "port": item["port"],
+
             "protocol": item["protocol"],
+
             "address": ", ".join(
                 item["address"]
             ),
+
             "process": ", ".join(
                 item["process"]
             ),
+
             "source": item["source"]
+
         })
 
-    # ---------------------------------------------------------
+
+    # =========================================================
     # SORT
-    # ---------------------------------------------------------
+    #
+    # Docker first
+    # Host second
+    # Port number ascending
+    # =========================================================
 
     return sorted(
+
         result,
+
         key=lambda x: (
+
+            0 if x["source"] == "Docker" else 1,
+
             x["port"],
+
             x["protocol"]
+
         )
+
     )
 
 
@@ -333,6 +409,7 @@ def find_port():
         type=int
     )
 
+
     used = set()
 
     for item in scan_ports():
@@ -340,6 +417,7 @@ def find_port():
         used.add(
             item["port"]
         )
+
 
     available = []
 
@@ -358,15 +436,22 @@ def find_port():
 
             break
 
+
     return jsonify({
+
         "available": available
+
     })
 
 
 if __name__ == "__main__":
 
     app.run(
+
         host="0.0.0.0",
+
         port=5000,
+
         debug=False
+
     )
